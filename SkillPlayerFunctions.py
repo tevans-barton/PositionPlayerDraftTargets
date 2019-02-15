@@ -1,9 +1,14 @@
 import pandas as pd
 import numpy as np
+from scipy.stats import percentileofscore
+
+PROTOTYPES_NAMES = ['Todd Gurley', 'Brandin Cooks', 'Cooper Kupp', 
+              'Robert Woods', 'Matt Breida', 'Dante Pettis', 'Marquise Goodwin', 'George Kittle']
+
 
 def clean_position(df):
 	df = df.dropna(subset = ['Pos'])
-	df['Pos'] = [str.upper(x) for x in df['Pos']]
+	df['Pos'] = df.Pos.apply(lambda x : str(x).upper())
 	df = df[(df['Pos'] == 'RB') | (df['Pos'] == 'WR') | (df['Pos'] == 'TE')]
 	return df.reset_index(drop = True)
 
@@ -54,6 +59,169 @@ def merge_stats_cols(dfa, dfb):
 	merged = merged[cols_to_keep]
 	merged['Catch Percentage'] = merged['Rec'] / merged['Tgt']
 	return merged
+
+def normalize_stats(df):
+	temp = df.copy()
+	temp['Touch/G'] = temp['Touch'] / temp['G']
+	temp['Rush TD/G'] = temp['Rush TD'] / temp['G']
+	temp['Rush Att/G'] = temp['Rush Att'] / temp['G']
+	temp['Rush Yds/Att'] = temp['Rush Yds'] / temp['Rush Att']
+	temp['Rush Yds/G'] = temp['Rush Yds'] / temp['G']
+	temp['Tgt/G'] = temp['Tgt'] / temp['G']
+	temp['Rec/G'] = temp['Rec'] / temp['G']
+	temp['Receiving Yds/Rec'] = temp['Receiving Yds'] / temp['Rec']
+	temp['Receiving Yds/G'] = temp['Receiving Yds'] / temp['G']
+	temp['Receiving TD/G'] = temp['Receiving TD'] / temp['G']
+	to_drop = ['Rush Att', 'Rush Yds', 'Rush TD', 'Tgt', 'Rec', 'Receiving Yds', 'Receiving TD', 'Touch']
+	temp = temp.drop(to_drop, axis = 1)
+	return temp
+
+def merge_in_stats(dfstats, dfplayers):
+	dfplayers = dfplayers.drop(['G', 'GS'], axis = 1)
+	return dfplayers.merge(dfstats, on = 'Player', how = 'left')
+
+def clean_receiving_data(d):
+	df = d.copy()
+	df = df.dropna(subset = ['Pos'])
+
+def position_map_receiving(d):
+	df = d.copy()
+	position_dict = {'TE/WR' : 'TE',
+					'RB/WR' : 'RB',
+					'FB/WR' : 'FB',
+					'LCB/WR' : 'WR',
+					'T/TE' : 'T',
+					'RB/TE' : 'FB',
+					'CB/RCB' : 'CB',
+					'QB/RB' : 'RB',
+					'FB/RB/WR' : 'FB',
+					'FB/RB/TE' : 'FB',
+					'WR' : 'WR',
+					'TE' : 'TE',
+					'RB' : 'RB',
+					'FB' : 'FB',
+					'QB' : 'QB',
+					'T' : 'T',
+					'C' : 'C',
+					'DT/LDT/RDT' : 'DT'
+					}
+	df['Pos'] = df['Pos'].map(position_dict)
+	positions_wanted = ['TE', 'RB', 'WR']
+	df = df[df['Pos'].isin(positions_wanted)]
+	return df
+
+
+def normalize_all_receiving(d):
+	df = d.copy()
+	df['Tgt/G'] = df['Tgt'] / df['G']
+	df['Rec/G'] = df['Rec'] / df['G']
+	df['Receiving Yds/Rec'] = df['Y/R']
+	df['Receiving Yds/G'] = df['Y/G']
+	df['Receiving TD/G'] = df['TD'] / df['G']
+	df['Catch Percentage'] = df['Rec'] / df['Tgt']
+	drop_columns = ['Rk', 'Player', 'Tm', 'Tgt', 'Rec', 'Yds', 'Y/R', 'TD', 'Lng', 'R/G', 'Y/G', 'Fmb', 'Ctch%']
+	df = df.drop(drop_columns, axis = 1)
+	return df
+
+def receiving_percentiles(d, d2):
+	df = d.copy()
+	df2 = d2.copy()
+	tgt_per_game = df.groupby('Pos').apply(lambda x : x['Tgt/G'].tolist()).to_dict()
+	rec_per_game = df.groupby('Pos').apply(lambda x : x['Rec/G'].tolist()).to_dict()
+	rec_yds_rec = df.groupby('Pos').apply(lambda x : x['Receiving Yds/Rec'].tolist()).to_dict()
+	rec_yds_game = df.groupby('Pos').apply(lambda x : x['Receiving Yds/G'].tolist()).to_dict()
+	rec_td_game = df.groupby('Pos').apply(lambda x : x['Receiving TD/G'].tolist()).to_dict()
+	catch_perc = df.groupby('Pos').apply(lambda x : x['Catch Percentage'].tolist()).to_dict()
+	df2 = df2.set_index('Pos')
+	receiving_columns = ['Catch Percentage', 'Tgt/G', 'Rec/G', 'Receiving Yds/Rec', 'Receiving Yds/G', 'Receiving TD/G']
+	corresponding_dicts = [catch_perc, tgt_per_game, rec_per_game, rec_yds_rec, rec_yds_game, rec_td_game]
+	for i in range(len(receiving_columns)):
+		temp_series = df2[receiving_columns[i]]
+		df2[receiving_columns[i] + ' Percentile'] = [percentileofscore(corresponding_dicts[i][k], v) for k, v in temp_series.items()]
+	df2 = df2.drop(receiving_columns, axis = 1)
+	df2 = df2.reset_index()
+	return df2
+
+
+def position_map_rushing(d):
+	df = d.copy()
+	position_dict = { 'QB/RB' : 'RB',
+					'QB' : 'QB',
+					'RB' : 'RB',
+					'RB/WR' : 'RB',
+					'WR' : 'WR',
+					'TE/WR' : 'TE',
+					'QB/WR' : 'QB',
+					'FB/WR' : 'FB',
+					'FB' : 'FB',
+					'FB/RB/TE' : 'FB',
+					'RB/TE' : 'FB',
+					'TE' : 'TE',
+					'DB' : 'DB',
+					'CB' : 'DB',
+					'LCB/WR' : 'WR',
+					'P' : 'P',
+					'FS/SS' : 'DB',
+					'DT/LDT' : 'DT',
+					'DE' : 'DE',
+					'FS' : 'DB',
+					'DB/S/SS' : 'DB'
+					}
+	df['Pos'] = df['Pos'].map(position_dict)
+	positions_wanted = ['TE', 'RB', 'WR']
+	df = df[df['Pos'].isin(positions_wanted)]
+	return df
+
+def normalize_all_rushing(d):
+	df = d.copy()
+	df['Rush Att/G'] = df['Att'] / df['G']
+	df['Rush TD/G'] = df['TD'] / df['G']
+	df['Rush Yds/Att'] = df['Yds'] / df['Att']
+	df['Rush Yds/G'] = df['Yds'] / df['G']
+	drop_columns = ['Rk', 'Player', 'Tm', 'Age', 'Att', 'Yds', 'TD', 'Lng', 'Y/A', 'Y/G', 'Fmb']
+	df = df.drop(drop_columns, axis = 1)
+	return df
+
+
+def rushing_percentiles(d, d2):
+	df = d.copy()
+	df2 = d2.copy()
+	att_per_game = df.groupby('Pos').apply(lambda x : x['Rush Att/G'].tolist()).to_dict()
+	td_per_game = df.groupby('Pos').apply(lambda x : x['Rush TD/G'].tolist()).to_dict()
+	yds_per_att = df.groupby('Pos').apply(lambda x : x['Rush Yds/Att'].tolist()).to_dict()
+	yds_per_game = df.groupby('Pos').apply(lambda x : x['Rush Yds/G'].tolist()).to_dict()
+	df2 = df2.set_index('Pos')
+	rush_columns = ['Rush Att/G', 'Rush TD/G', 'Rush Yds/Att', 'Rush Yds/G']
+	corresponding_dicts = [att_per_game, td_per_game, yds_per_att, yds_per_game]
+	for i in range(len(rush_columns)):
+		temp_series = df2[rush_columns[i]]
+		df2[rush_columns[i] + ' Percentile'] = [percentileofscore(corresponding_dicts[i][k], v) for k, v in temp_series.items()]
+	df2 = df2.drop(rush_columns, axis = 1)
+	df2 = df2.reset_index()
+	return df2
+
+def create_prototypes(d, d2):
+	df1 = d.copy()
+	df2 = d2.copy()
+	prototypes = pd.concat([df1, df2]).reset_index(drop = True)
+	prototypes = prototypes[prototypes['Player'].isin(PROTOTYPES_NAMES)].reset_index(drop = True)
+	prototypes = prototypes.drop(['G', 'GS', 'Pos'], axis = 1)
+	return prototypes
+
+def rename_rushing_dataframes(d):
+	df = d.copy()
+	return df
+
+
+
+
+
+
+
+
+
+
+
 
 
 
