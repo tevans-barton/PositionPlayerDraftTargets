@@ -22,6 +22,7 @@ def clean_player_column(df):
 	player_list = [x.replace('*', '').replace('+', '') for x in player_list]
 	player_list = [x.split('\\', 1)[0] for x in player_list]
 	df['Player'] = player_list
+	df = df[~(df.duplicated(subset = ['Player'], keep = 'first'))]
 	return df
 
 def fix_column_names(df):
@@ -133,8 +134,8 @@ def receiving_percentiles(d, d2):
 	rec_td_game = df.groupby('Pos').apply(lambda x : x['Receiving TD/G'].tolist()).to_dict()
 	catch_perc = df.groupby('Pos').apply(lambda x : x['Catch Percentage'].tolist()).to_dict()
 	df2 = df2.set_index('Pos')
-	receiving_columns = ['Catch Percentage', 'Tgt/G', 'Rec/G', 'Receiving Yds/Rec', 'Receiving Yds/G', 'Receiving TD/G']
-	corresponding_dicts = [catch_perc, tgt_per_game, rec_per_game, rec_yds_rec, rec_yds_game, rec_td_game]
+	receiving_columns = ['Tgt/G', 'Catch Percentage', 'Rec/G', 'Receiving Yds/Rec', 'Receiving Yds/G', 'Receiving TD/G']
+	corresponding_dicts = [tgt_per_game, catch_perc, rec_per_game, rec_yds_rec, rec_yds_game, rec_td_game]
 	for i in range(len(receiving_columns)):
 		temp_series = df2[receiving_columns[i]]
 		df2[receiving_columns[i] + ' Percentile'] = [percentileofscore(corresponding_dicts[i][k], v) for k, v in temp_series.items()]
@@ -207,10 +208,6 @@ def create_prototypes(d, d2):
 	prototypes = prototypes[prototypes['Player'].isin(PROTOTYPES_NAMES)].reset_index(drop = True)
 	prototypes = prototypes.drop(['G', 'GS', 'Pos'], axis = 1)
 	return prototypes
-
-def rename_rushing_dataframes(d):
-	df = d.copy()
-	return df
 
 
 
